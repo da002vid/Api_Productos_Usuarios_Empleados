@@ -52,3 +52,33 @@ def crear_tabla_empleados():
     conn.commit()
     cur.close()
     conn.close()
+
+def crear_tabla_categorias():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS categorias (
+            id SERIAL PRIMARY KEY,
+            nombre VARCHAR(100) NOT NULL UNIQUE
+        )
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def crear_tabla_productos():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS productos (
+            id SERIAL PRIMARY KEY,
+            nombre VARCHAR(150) NOT NULL,
+            precio NUMERIC(10,2) NOT NULL,
+            stock INTEGER NOT NULL DEFAULT 0,
+            categoria_id INTEGER NOT NULL,
+            FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE RESTRICT
+        )
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()

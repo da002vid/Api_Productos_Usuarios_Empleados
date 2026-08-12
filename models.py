@@ -15,3 +15,12 @@ class Employee(BaseModel):
     name: str
     position: str
     salary: float
+
+class Category(BaseModel):
+    name: str
+
+class Item(BaseModel):
+    name: str
+    price: float
+    stock: int = 0
+    category_id: int

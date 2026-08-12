@@ -1,12 +1,14 @@
 from fastapi import FastAPI, HTTPException
-from database import crear_tabla, crear_tabla_usuarios, crear_tabla_empleados, get_connection
-from models import Product, User, Employee
+from database import crear_tabla, crear_tabla_usuarios, crear_tabla_empleados, crear_tabla_categorias, crear_tabla_productos, get_connection
+from models import Product, User, Employee, Category, Item
 
 app = FastAPI()
 
 crear_tabla()
 crear_tabla_usuarios()
 crear_tabla_empleados()
+crear_tabla_categorias()
+crear_tabla_productos()
 
 
 @app.get("/")
@@ -14,7 +16,7 @@ def home():
     return {"Mensaje": "Api Funcionando Correctamente"}
 
 
-@app.post("/productos")
+@app.post("/products")
 def create_product(product: Product):
     conn = get_connection()
     cur = conn.cursor()
@@ -29,7 +31,7 @@ def create_product(product: Product):
     return {"Mensaje":"Producto Creado", "code":new_code}
 
 
-@app.get("/productos")
+@app.get("/products")
 def list_products():
     conn = get_connection()
     cur = conn.cursor()
@@ -40,7 +42,7 @@ def list_products():
     return {"productos": products}
 
 
-@app.get("/productos/{code}")
+@app.get("/products/{code}")
 def buscar_producto(code: int):
     conn = get_connection()
     cur = conn.cursor()
@@ -54,8 +56,7 @@ def buscar_producto(code: int):
     raise HTTPException(status_code=404, detail="Producto no encontrado")
 
 
-#ACTUALIZAR UN REGISTRO
-@app.put("/productos/{code}")
+@app.put("/products/{code}")
 def update_product(code: int, product: Product):
     conn = get_connection()
     cur = conn.cursor()
@@ -69,7 +70,7 @@ def update_product(code: int, product: Product):
     return{"msg": "Producto actualizado exitosamente"}
 
 
-@app.delete("/productos/{code}")
+@app.delete("/products/{code}")
 def delete_product(code: int):
     conn = get_connection()
     cur = conn.cursor()
@@ -83,7 +84,6 @@ def delete_product(code: int):
     return {"msg": "Producto eliminado exitosamente"}
 
 
-#REGISTRAR UN USUARIO
 @app.post("/usuarios")
 def create_user(user: User):
     conn = get_connection()
@@ -96,7 +96,6 @@ def create_user(user: User):
     return {"Mensaje": "Usuario Creado"}
 
 
-#CONSULTAR SI EXISTE UN USUARIO Y PASSWORD
 @app.post("/login")
 def verificar_usuario(user: User):
     conn = get_connection()
@@ -112,7 +111,6 @@ def verificar_usuario(user: User):
     return {"Mensaje": "no existe"}
 
 
-#REGISTRAR UN EMPLEADO
 @app.post("/empleados")
 def create_employee(employee: Employee):
     conn = get_connection()
@@ -153,7 +151,6 @@ def buscar_empleado(document: int):
     raise HTTPException(status_code=404, detail="Empleado no encontrado")
 
 
-#ACTUALIZAR UN REGISTRO
 @app.put("/empleados/{document}")
 def update_employee(document: int, employee: Employee):
     conn = get_connection()
@@ -180,3 +177,173 @@ def delete_employee(document: int):
     if affect_rows == 0:
         raise HTTPException(status_code=404, detail="Empleado No Encontrado")
     return {"msg": "Empleado eliminado exitosamente"}
+
+
+@app.post("/categorias")
+def crear_categoria(categoria: Category):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM categorias WHERE nombre = %s", (categoria.name,))
+    existe = cur.fetchone()
+    if existe:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=400, detail="La categoria ya existe")
+
+    cur.execute("INSERT INTO categorias(nombre) VALUES(%s) RETURNING id", (categoria.name,))
+    nuevo_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"Mensaje": "Categoria Creada", "id": nuevo_id}
+
+
+@app.get("/categorias")
+def listar_categorias():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM categorias")
+    categorias = cur.fetchall()
+    cur.close()
+    conn.close()
+    return {"categorias": categorias}
+
+
+@app.get("/categorias/{id}/productos")
+def listar_productos_por_categoria(id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM productos WHERE categoria_id = %s", (id,))
+    productos = cur.fetchall()
+    cur.close()
+    conn.close()
+    return {"productos": productos}
+
+
+@app.get("/categorias/{id}")
+def buscar_categoria(id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, nombre FROM categorias WHERE id = %s", (id,))
+    categoria = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if categoria:
+        return categoria
+    raise HTTPException(status_code=404, detail="Categoria no encontrada")
+
+
+@app.delete("/categorias/{id}")
+def eliminar_categoria(id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM categorias WHERE id = %s", (id,))
+        affect_rows = cur.rowcount
+        conn.commit()
+    except:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=400, detail="No se puede eliminar, la categoria tiene productos asociados")
+
+    cur.close()
+    conn.close()
+    if affect_rows == 0:
+        raise HTTPException(status_code=404, detail="Categoria No Encontrada")
+    return {"msg": "Categoria eliminada exitosamente"}
+
+
+@app.post("/productos")
+def crear_producto(producto: Item):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM categorias WHERE id = %s", (producto.category_id,))
+    categoria = cur.fetchone()
+    if not categoria:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="La categoria indicada no existe")
+
+    cur.execute("INSERT INTO " \
+    "productos(nombre,precio,stock,categoria_id) VALUES(%s,%s,%s,%s)" \
+    "RETURNING id",
+    (producto.name, producto.price, producto.stock, producto.category_id))
+    nuevo_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"Mensaje": "Producto Creado", "id": nuevo_id}
+
+
+@app.get("/productos")
+def listar_productos():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM productos")
+    productos = cur.fetchall()
+    cur.close()
+    conn.close()
+    return {"productos": productos}
+
+
+@app.get("/productos/stock-bajo/{minimo}")
+def productos_stock_bajo(minimo: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM productos WHERE stock < %s", (minimo,))
+    productos = cur.fetchall()       
+    cur.close()
+    conn.close()
+    return {"productos": productos}
+
+
+@app.get("/productos/{id}")
+def buscar_producto_id(id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM productos WHERE id = %s", (id,))
+    producto = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if producto:
+        return producto
+    raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+
+@app.put("/productos/{id}")
+def actualizar_producto(id: int, producto: Item):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM categorias WHERE id = %s", (producto.category_id,))
+    categoria = cur.fetchone()
+    if not categoria:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="La categoria indicada no existe")
+
+    cur.execute("UPDATE productos SET nombre = %s, precio = %s, stock = %s, categoria_id = %s WHERE id = %s",
+    (producto.name, producto.price, producto.stock, producto.category_id, id))
+    affect_rows = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    if affect_rows == 0:
+        raise HTTPException(status_code=404, detail="Producto No Encontrado")
+    return {"msg": "Producto actualizado exitosamente"}
+
+
+@app.delete("/productos/{id}")
+def eliminar_producto(id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM productos WHERE id = %s", (id,))
+    affect_rows = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    if affect_rows == 0:
+        raise HTTPException(status_code=404, detail="Producto No Encontrado")
+    return {"msg": "Producto eliminado exitosamente"}
